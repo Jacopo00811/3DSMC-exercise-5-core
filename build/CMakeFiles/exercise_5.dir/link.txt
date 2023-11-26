@@ -1,1 +1,1 @@
-/usr/bin/g++ -g CMakeFiles/exercise_5.dir/main.cpp.o CMakeFiles/exercise_5.dir/FreeImageHelper.cpp.o -o exercise_5  /usr/lib/libceres.so.1.14.0 -lfreeimage -llz4 /usr/lib/x86_64-linux-gnu/libglog.so /usr/lib/x86_64-linux-gnu/libgflags.so.2.2.2 -lpthread 
+/usr/bin/g++  -O3 -DNDEBUG   CMakeFiles/exercise_5.dir/main.cpp.o CMakeFiles/exercise_5.dir/FreeImageHelper.cpp.o  -o exercise_5  /usr/lib/libceres.so.1.14.0 -lfreeimage -llz4 /usr/lib/x86_64-linux-gnu/libglog.so /usr/lib/x86_64-linux-gnu/libgflags.so.2.2.2 -lpthread 

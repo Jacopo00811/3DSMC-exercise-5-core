@@ -110,10 +110,29 @@ public:
         // increment (pose parameters) to the source point, you can use the PoseIncrement
         // class.
         // Important: Ceres automatically squares the cost function.
+		
+        // Extract rotation and translation from the pose parameters using PoseIncrement.
+        PoseIncrement<T> poseIncrement(const_cast<T* const>(pose));
+        
+        // Apply the pose increment to the source point.
+		T p_s[3], p_s_init[3];
 
-        residuals[0] = T(0);
-		residuals[1] = T(0);
-		residuals[2] = T(0);
+		p_s_init[0] = T(m_sourcePoint[0]);
+		p_s_init[1] = T(m_sourcePoint[1]);
+		p_s_init[2] = T(m_sourcePoint[2]);
+
+		poseIncrement.apply(p_s_init, p_s);
+		
+        T p_t[3];
+		
+        p_t[0] = T(m_targetPoint[0]);
+		p_t[1] = T(m_targetPoint[1]);
+		p_t[2] = T(m_targetPoint[2]);
+
+		// Compute the residuals (difference between transformed source point and target point).
+		residuals[0] = (p_s[0] - p_t[0]) * T(m_weight) * T(LAMBDA);
+		residuals[1] = (p_s[1] - p_t[1]) * T(m_weight) * T(LAMBDA);
+		residuals[2] = (p_s[2] - p_t[2]) * T(m_weight) * T(LAMBDA);
 
         return true;
     }
@@ -148,7 +167,29 @@ public:
         // class.
         // Important: Ceres automatically squares the cost function.
 
-        residuals[0] = T(0);
+        // Extract rotation and translation from the pose parameters using PoseIncrement.
+        PoseIncrement<T> poseIncrement(const_cast<T*>(pose));
+
+        // Apply the pose increment to the source point.
+
+        T p_s[3], p_s_init[3];
+
+		p_s_init[0] = T(m_sourcePoint[0]);
+		p_s_init[1] = T(m_sourcePoint[1]);
+		p_s_init[2] = T(m_sourcePoint[2]);
+		
+        poseIncrement.apply(p_s_init, p_s);
+		
+        T p_t[3], n_t[3];
+		p_t[0] = T(m_targetPoint[0]);
+		p_t[1] = T(m_targetPoint[1]);
+		p_t[2] = T(m_targetPoint[2]);
+
+		n_t[0] = T(m_targetNormal[0]);
+		n_t[1] = T(m_targetNormal[1]);
+		n_t[2] = T(m_targetNormal[2]);
+		
+		residuals[0] = T(LAMBDA) * (n_t[0] * (p_s[0] - p_t[0]) + n_t[1] * (p_s[1] - p_t[1]) + n_t[2] * (p_s[2] - p_t[2]));
 
         return true;
     }
@@ -235,7 +276,10 @@ protected:
                 const auto& targetNormal = targetNormals[match.idx];
 
                 // TODO: Invalidate the match (set it to -1) if the angle between the normals is greater than 60
-                
+                auto angle = std::acos(sourceNormal.dot(targetNormal) / (targetNormal.norm() * sourceNormal.norm()));
+                // auto angle = std::acos(sourceNormal.dot(targetNormal) );
+				if(angle > M_PI / 3.0)
+				    match.idx = -1;
             }
         }
     }
@@ -329,7 +373,8 @@ private:
 
                 // TODO: Create a new point-to-point cost function and add it as constraint (i.e. residual block) 
                 // to the Ceres problem.
-
+                 problem.AddResidualBlock(PointToPointConstraint::create(sourcePoint, targetPoint, 1.0),
+                        nullptr, const_cast<double*>(poseIncrement.getData()));
 
                 if (m_bUsePointToPlaneConstraints) {
                     const auto& targetNormal = targetNormals[match.idx];
@@ -339,7 +384,8 @@ private:
 
                     // TODO: Create a new point-to-plane cost function and add it as constraint (i.e. residual block) 
                     // to the Ceres problem.
-
+                    problem.AddResidualBlock(PointToPlaneConstraint::create(sourcePoint, targetPoint, targetNormal, 1.0),
+                        nullptr, const_cast<double*>(poseIncrement.getData()));
 
                 }
             }
@@ -427,19 +473,22 @@ private:
             const auto& n = targetNormals[i];
 
             // TODO: Add the point-to-plane constraints to the system
-
+            A.row(4 * i + 0) << n(2) * s(1) - n(1) * s(2), n(0) * s(2) - n(2) * s(0), n(1) * s(0) - n(0) * s(1), n(0), n(1), n(2);
+            A.row(4 * i + 1) << n(2) * s(1) - n(1) * s(2), n(0) * s(2) - n(2) * s(0), n(1) * s(0) - n(0) * s(1), -n(0), -n(1), -n(2);
+            A.row(4 * i + 2) << n(2), -n(1), n(0), 0, 0, 0;
+            A.row(4 * i + 3) << 0, 0, 0, n(2), -n(1), n(0);
 
             // TODO: Add the point-to-point constraints to the system
-
+            b.segment(4 * i, 4) << n.dot(d - s);
 
             //TODO: Optionally, apply a higher weight to point-to-plane correspondences
-
+            // ???
 
         }
 
         // TODO: Solve the system
         VectorXf x(6);
-
+        x = A.bdcSvd(ComputeThinU | ComputeThinV).solve(b);
 
         float alpha = x(0), beta = x(1), gamma = x(2);
 
@@ -452,7 +501,8 @@ private:
 
         // TODO: Build the pose matrix using the rotation and translation matrices
         Matrix4f estimatedPose = Matrix4f::Identity();
-
+        estimatedPose.block<3,3>(0,0) = rotation;
+        estimatedPose.block<3,1>(0,3) = translation;
 
         return estimatedPose;
     }
